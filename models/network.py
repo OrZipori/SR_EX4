@@ -5,19 +5,19 @@ import torch.nn.functional as F
 class ProbNet(nn.Module):
     def __init__(self, lstm_out, num_classes, first_filter, second_filter, batch_size):
         super(ProbNet, self).__init__()
-        self.conv1 = nn.Conv2d(1, first_filter, kernel_size=3)
-        self.conv2 = nn.Conv2d(first_filter, second_filter, kernel_size=3)
+        self.conv1 = nn.Conv2d(1, first_filter, kernel_size=2)
+        self.conv2 = nn.Conv2d(first_filter, second_filter, kernel_size=1)
     
         self.conv_batch_norm1 = nn.BatchNorm2d(first_filter)
         self.conv_batch_norm2 = nn.BatchNorm2d(second_filter)
 
         # calculate the end dimensions after 2 convolution blocks
-        new_h, new_w = self.conv_output_shape((161, 101), kernel_size=3)
+        new_h, new_w = self.conv_output_shape((161, 101), kernel_size=2)
         new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=2, stride=2)
-        new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=3)
-        new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=2, stride=2)
+        new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=1)
+        new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=1, stride=1)
 
-        lstm_in = 600
+        lstm_in = 300
         self.linear1 = nn.Linear(new_h * second_filter, lstm_in)
         self.linear2 = nn.Linear(lstm_out, num_classes)
 
@@ -47,15 +47,15 @@ class ProbNet(nn.Module):
     def forward(self, x, device):
         # first conv - relu - pool block
         out = self.conv1(x)
-        out = self.conv_batch_norm1(out)
         out = F.relu(out)
+        out = self.conv_batch_norm1(out)
         out = F.max_pool2d(out, 2)
 
         # second conv - relu - pool block
         out = self.conv2(out)
-        out = self.conv_batch_norm2(out)
         out = F.relu(out)
-        out = F.max_pool2d(out, 2)
+        out = self.conv_batch_norm2(out)
+        out = F.max_pool2d(out, 1)
 
         freq = out.size()[2]
         frames = out.size()[3]
@@ -81,11 +81,3 @@ class ProbNet(nn.Module):
 
         out = self.log_softmax(out)
         return out
-
-
-# increase channels to 30?
-# num of freq and time frames decrease
-
-# for lstm maps * freq 
-# hidden 200 
-# linear to num classes

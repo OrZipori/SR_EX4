@@ -141,9 +141,9 @@ class GCommandLoader(data.Dataset):
             target = self.target_transform(target)
 
         target_to_idx = [char_to_idx[c] for c in real_target]
-        if (len(target_to_idx) < self.max_label_size):
-            for _ in range(self.max_label_size - len(target_to_idx)):
-                target_to_idx.append(char_to_idx['-'])
+        #if (len(target_to_idx) < self.max_label_size):
+        #    for _ in range(self.max_label_size - len(target_to_idx)):
+        #        target_to_idx.append(char_to_idx['-'])
         target_to_idx = torch.tensor(target_to_idx)
 
         return spect, target, len(real_target), target_to_idx

@@ -5,20 +5,20 @@ from utils import *
 import numpy as np
 import torch.nn as nn
 import torch.optim as opt
-from itertools import groupby
+from itertools import groupby, chain
 import sys
 # Hyper parameters
-lstm_out = 250
+lstm_out = 150
 first_filters = 10
 second_filters = 40
 batch_size = 1000
-num_of_epochs = 10
-learning_rate = 0.002
+num_of_epochs = 40
+learning_rate = 0.001
 
 def train(model, device):
     ctc_loss = nn.CTCLoss()
     model.train()
-    optimizer = opt.Adam(model.parameters(), lr=learning_rate)
+    optimizer = opt.RMSprop(model.parameters(), lr=learning_rate)
     global batch_size
     
     print("123456")
@@ -29,13 +29,18 @@ def train(model, device):
             count += 1
             print('[%d%%]'%count, end="\r")
             optimizer.zero_grad()
-            item = item.to(device)
+            item = item.to(device) 
             probes = model(item, device)
 
             length = probes.size()[0]
             targets = indices
-            input_lengths = torch.full(size=(batch_size,), fill_value=length, dtype=torch.long)
-            target_lengths = real_size
+            targets = map(lambda item: item.cpu().numpy().tolist(), targets)
+            targets = list(chain(*targets))
+            targets = torch.tensor(targets).to(device)
+            probes = probes.to(device)
+
+            input_lengths = torch.full(size=(batch_size,), fill_value=length, dtype=torch.long).to(device)
+            target_lengths = real_size.to(device)
 
             loss = ctc_loss(probes, targets, input_lengths, target_lengths)
             loss_sum += loss
@@ -48,7 +53,7 @@ def train(model, device):
 
         
         print("finish epoch #{} avg loss {} last loss {}".format(e, (loss_sum / len(train_loader)), loss))
-        
+    
     alignments = probes.data.max(2, keepdim=True)[1]
     print(alignments.size())
     alignments = alignments.view(-1, length)
@@ -67,13 +72,13 @@ def decode(alignments):
         print(row)
         # remove consecutive repetition
         new_row = [x[0] for x in groupby(row)]
-        #print("new row {}".format(new_row))
+        print("new row {}".format(new_row))
         # remove blanks
         new_row = list(filter(lambda c: c != char_to_idx['-'], new_row))
-        #print("new row {}".format(new_row))
+        print("new row {}".format(new_row))
         # return to actual letters
         new_row = ''.join([idx_to_char[c] for c in new_row])
-        #print("new row {}".format(new_row))
+        print("new row {}".format(new_row))
         words.append(new_row)
 
     return words
