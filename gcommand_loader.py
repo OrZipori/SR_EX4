@@ -11,8 +11,8 @@ AUDIO_EXTENSIONS = [
     '.wav', '.WAV',
 ]
 
-char_to_idx = {c : i for i,c in enumerate('-abcdefghijklmnopqrstuvwxyz')}
-idx_to_char = {i : c for i,c in enumerate('-abcdefghijklmnopqrstuvwxyz')}
+char_to_idx = {c : i for i,c in enumerate('-abcdefghijklmnopqrstuvwxyz~')}
+idx_to_char = {i : c for i,c in enumerate('-abcdefghijklmnopqrstuvwxyz~')}
 
 def is_audio_file(filename):
     return any(filename.endswith(extension) for extension in AUDIO_EXTENSIONS)
@@ -105,7 +105,7 @@ class GCommandLoader(data.Dataset):
     """
 
     def __init__(self, root, transform=None, target_transform=None, window_size=.02,
-                 window_stride=.01, window_type='hamming', normalize=True, max_len=101):
+                 window_stride=.01, window_type='hamming', normalize=True, max_len=101, is_test=None):
         classes, class_to_idx, max_label_size, idx_to_class = find_classes(root)
         spects = make_dataset(root, class_to_idx)
         if len(spects) == 0:
@@ -125,6 +125,7 @@ class GCommandLoader(data.Dataset):
         self.max_len = max_len
         self.max_label_size = max_label_size
         self.idx_to_class = idx_to_class
+        self.is_test = is_test
 
     def __getitem__(self, index):
         """
@@ -140,13 +141,17 @@ class GCommandLoader(data.Dataset):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        target_to_idx = [char_to_idx[c] for c in real_target]
-        #if (len(target_to_idx) < self.max_label_size):
-        #    for _ in range(self.max_label_size - len(target_to_idx)):
-        #        target_to_idx.append(char_to_idx['-'])
-        target_to_idx = torch.tensor(target_to_idx)
+        if (not self.is_test):
+            target_to_idx = [char_to_idx[c] for c in real_target]
+            if (len(target_to_idx) < self.max_label_size):
+                for _ in range(self.max_label_size - len(target_to_idx)):
+                    target_to_idx.append(char_to_idx['~'])
+            target_to_idx = torch.tensor(target_to_idx, dtype=torch.int32)
 
-        return spect, target, len(real_target), target_to_idx
+        if (self.is_test):
+            return spect, os.path.split(path)[-1]
+        else:
+            return spect, target, len(real_target), target_to_idx
 
     def __len__(self):
         return len(self.spects)

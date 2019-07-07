@@ -5,20 +5,22 @@ import torch.nn.functional as F
 class ProbNet(nn.Module):
     def __init__(self, lstm_out, num_classes, first_filter, second_filter, batch_size):
         super(ProbNet, self).__init__()
-        self.conv1 = nn.Conv2d(1, first_filter, kernel_size=2)
-        self.conv2 = nn.Conv2d(first_filter, second_filter, kernel_size=1)
+        self.conv1 = nn.Conv2d(1, first_filter, kernel_size=3)
+        self.conv2 = nn.Conv2d(first_filter, second_filter, kernel_size=3)
     
         self.conv_batch_norm1 = nn.BatchNorm2d(first_filter)
         self.conv_batch_norm2 = nn.BatchNorm2d(second_filter)
+        
+        self.conv_drop1 = nn.Dropout(p=0.25)
+        self.conv_drop2 = nn.Dropout(p=0.5)
 
         # calculate the end dimensions after 2 convolution blocks
-        new_h, new_w = self.conv_output_shape((161, 101), kernel_size=2)
+        new_h, new_w = self.conv_output_shape((161, 101), kernel_size=3)
         new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=2, stride=2)
-        new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=1)
-        new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=1, stride=1)
+        new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=3)
+        new_h, new_w = self.conv_output_shape((new_h, new_w), kernel_size=2, stride=2)
 
-        lstm_in = 300
-        self.linear1 = nn.Linear(new_h * second_filter, lstm_in)
+        lstm_in = new_h * second_filter
         self.linear2 = nn.Linear(lstm_out, num_classes)
 
         self.log_softmax = nn.LogSoftmax(dim=2)
@@ -38,46 +40,33 @@ class ProbNet(nn.Module):
         h = floor( ((h_w[0] + (2 * pad) - ( dilation * (kernel_size[0] - 1) ) - 1 )/ stride) + 1)
         w = floor( ((h_w[1] + (2 * pad) - ( dilation * (kernel_size[1] - 1) ) - 1 )/ stride) + 1)
         return h, w
-        
-    def init_hidden(self, batch_size, device):
-        rnn_init_h = nn.Parameter(torch.zeros(1, batch_size, self.lstm_out).type(torch.FloatTensor).to(device), requires_grad=True)
-        rnn_init_c = nn.Parameter(torch.zeros(1, batch_size, self.lstm_out).type(torch.FloatTensor).to(device), requires_grad=True)
-        return (rnn_init_h, rnn_init_c)
 
     def forward(self, x, device):
         # first conv - relu - pool block
         out = self.conv1(x)
         out = F.relu(out)
         out = self.conv_batch_norm1(out)
+        out = self.conv_drop1(out)
         out = F.max_pool2d(out, 2)
 
         # second conv - relu - pool block
         out = self.conv2(out)
         out = F.relu(out)
         out = self.conv_batch_norm2(out)
-        out = F.max_pool2d(out, 1)
+        out = self.conv_drop2(out)
+        out = F.max_pool2d(out, 2)
 
-        freq = out.size()[2]
-        frames = out.size()[3]
-        batch_size = out.size()[0]
-        out = out.view(frames * batch_size, self.second_filter * freq)
+        batch_size, channels, freq, frames = out.size()
+        out = out.view(batch_size,  channels *  freq, frames)
+        out = out.permute(2, 0, 1)
 
-        out = self.linear1(out)
-        
-        out = out.view(frames, batch_size, -1)
-        
-        #out = out.permute(3, 0, 1, 2)
+        out, _ = self.lstm(out)
 
-        #out = out.view(frames, batch_size, self.second_filter * freq)
-    
-        self.h0, self.c0 = self.init_hidden(batch_size, device)
+        out = out.permute(1, 0, 2)
 
-        out, _ = self.lstm(out, (self.h0, self.c0))
-
-        out = out.view(-1, self.lstm_out)
         out = self.linear2(out)
 
-        out = out.view(frames, batch_size, self.num_classes)
-
         out = self.log_softmax(out)
+
+        out = out.permute(1, 0, 2)
         return out
